@@ -23,25 +23,10 @@ jobs:
           java-version: "17"
 
 
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
-
-
-      - name: Accept Android licenses
-        run: |
-          yes | sdkmanager --licenses || true
-
-
-      - name: Install required Android tools
-        run: |
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-31"
-          sdkmanager "build-tools;31.0.0"
-
-
       - name: Install system dependencies
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             python3-pip \
             python3-setuptools \
@@ -76,9 +61,11 @@ jobs:
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found"
+            echo "ERROR: ZIP file not found"
             exit 1
           fi
+
+          echo "Using ZIP: $ZIP_FILE"
 
           unzip -q "$ZIP_FILE" -d project
 
@@ -93,37 +80,39 @@ jobs:
           fi
 
           PROJECT_DIR=$(dirname "$SPEC")
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          echo "Project: $PROJECT_DIR"
 
 
       - name: Configure Buildozer
         run: |
           cd "$PROJECT_DIR"
 
-          sed -i 's/^android.api = .*/android.api = 31/' buildozer.spec || true
-          sed -i 's/^android.minapi = .*/android.minapi = 23/' buildozer.spec || true
+          cat >> buildozer.spec << 'EOF'
 
-          echo "android.sdk_path = $ANDROID_HOME" >> buildozer.spec
-          echo "android.accept_sdk_license = True" >> buildozer.spec
+          android.api = 31
+          android.minapi = 23
+          android.ndk = 25b
+          android.accept_sdk_license = True
+          EOF
+
+          echo "Final Buildozer configuration:"
+          cat buildozer.spec
 
 
       - name: Build APK
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: |
           cd "$PROJECT_DIR"
-
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
           buildozer android debug
 
 
-      - name: Find APK
+      - name: Show APK files
         if: always()
         run: |
-          echo "Generated APK files:"
+          echo "Searching for APK files..."
           find project -type f -name "*.apk" || true
 
 
