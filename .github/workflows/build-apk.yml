@@ -8,51 +8,89 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            python3-setuptools \
+            python3-wheel \
+            git \
+            zip \
+            unzip \
+            openjdk-17-jdk \
+            build-essential \
+            autoconf \
+            libtool \
+            pkg-config \
+            zlib1g-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libtinfo5 \
+            cmake \
+            libffi-dev \
+            libssl-dev
+
+      - name: Install Buildozer
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython
+
       - name: Extract ZIP
         run: |
           mkdir -p project
+
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found"
+            echo "ERROR: No ZIP file found in repository root"
+            find . -maxdepth 2 -type f
             exit 1
           fi
 
-          echo "Using ZIP: $ZIP_FILE"
+          echo "Using ZIP file: $ZIP_FILE"
+
           unzip -q "$ZIP_FILE" -d project
 
       - name: Find Buildozer project
         run: |
-          SPEC=$(find project -name buildozer.spec -type f | head -n 1)
+          SPEC=$(find project -type f -name "buildozer.spec" | head -n 1)
 
           if [ -z "$SPEC" ]; then
             echo "ERROR: buildozer.spec was not found"
-            echo "Files inside ZIP:"
+            echo "Project files:"
             find project -maxdepth 5 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SPEC")
 
-          echo "Buildozer project:"
+          echo "Project directory:"
           echo "$PROJECT_DIR"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
       - name: Build APK
-        uses: ArtemSBulgakov/buildozer-action@v1
-        with:
-          command: buildozer android debug
-          workdir: ${{ env.PROJECT_DIR }}
+        run: |
+          cd "$PROJECT_DIR"
+          buildozer android debug
+
+      - name: Show generated files
+        if: always()
+        run: |
+          echo "Searching for APK files..."
+          find project -type f -name "*.apk" || true
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: systematic-trader-pro-apk
-          path: ${{ env.PROJECT_DIR }}/bin/*.apk
+          path: project/**/bin/*.apk
+          if-no-files-found: error
