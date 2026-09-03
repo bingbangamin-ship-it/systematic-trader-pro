@@ -11,16 +11,20 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             python3-pip \
             python3-setuptools \
             python3-wheel \
+            python3-dev \
             git \
             zip \
             unzip \
@@ -32,15 +36,17 @@ jobs:
             zlib1g-dev \
             libncurses5-dev \
             libncursesw5-dev \
-            libtinfo5 \
             cmake \
             libffi-dev \
             libssl-dev
 
+
       - name: Install Buildozer
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython
+          python3 -m pip install buildozer
+          python3 -m pip install Cython==0.29.36
+
 
       - name: Extract ZIP
         run: |
@@ -50,13 +56,16 @@ jobs:
 
           if [ -z "$ZIP_FILE" ]; then
             echo "ERROR: No ZIP file found in repository root"
-            find . -maxdepth 2 -type f
+            echo "Repository files:"
+            find . -maxdepth 2 -type f | sort
             exit 1
           fi
 
-          echo "Using ZIP file: $ZIP_FILE"
+          echo "Using ZIP file:"
+          echo "$ZIP_FILE"
 
           unzip -q "$ZIP_FILE" -d project
+
 
       - name: Find Buildozer project
         run: |
@@ -64,28 +73,50 @@ jobs:
 
           if [ -z "$SPEC" ]; then
             echo "ERROR: buildozer.spec was not found"
-            echo "Project files:"
-            find project -maxdepth 5 -type f | sort
+            echo "Extracted project files:"
+            find project -maxdepth 6 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SPEC")
 
-          echo "Project directory:"
+          echo "Buildozer project directory:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+
+      - name: Configure Android SDK license
+        run: |
+          cd "$PROJECT_DIR"
+
+          if grep -q "^android.accept_sdk_license" buildozer.spec; then
+            sed -i 's/^android.accept_sdk_license.*/android.accept_sdk_license = True/' buildozer.spec
+
+          elif grep -q "^# android.accept_sdk_license" buildozer.spec; then
+            sed -i 's/^# android.accept_sdk_license.*/android.accept_sdk_license = True/' buildozer.spec
+
+          else
+            echo "" >> buildozer.spec
+            echo "android.accept_sdk_license = True" >> buildozer.spec
+          fi
+
+          echo "Checking Buildozer license configuration:"
+          grep "android.accept_sdk_license" buildozer.spec || true
+
 
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
           buildozer android debug
 
-      - name: Show generated files
+
+      - name: Show generated APK files
         if: always()
         run: |
-          echo "Searching for APK files..."
+          echo "Searching for generated APK files..."
           find project -type f -name "*.apk" || true
+
 
       - name: Upload APK
         if: success()
