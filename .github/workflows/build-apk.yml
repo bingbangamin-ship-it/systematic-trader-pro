@@ -27,24 +27,21 @@ jobs:
         uses: android-actions/setup-android@v3
 
 
-      - name: Accept Android SDK licenses
+      - name: Accept Android licenses
         run: |
           yes | sdkmanager --licenses || true
 
 
-      - name: Install Android SDK packages
+      - name: Install required Android tools
         run: |
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-31" \
-            "build-tools;31.0.0" \
-            "cmdline-tools;latest"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-31"
+          sdkmanager "build-tools;31.0.0"
 
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             python3-pip \
             python3-setuptools \
@@ -65,7 +62,7 @@ jobs:
             libssl-dev
 
 
-      - name: Install Python tools
+      - name: Install Buildozer
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install buildozer
@@ -83,9 +80,6 @@ jobs:
             exit 1
           fi
 
-          echo "Using ZIP:"
-          echo "$ZIP_FILE"
-
           unzip -q "$ZIP_FILE" -d project
 
 
@@ -95,16 +89,11 @@ jobs:
 
           if [ -z "$SPEC" ]; then
             echo "ERROR: buildozer.spec not found"
-            find project -maxdepth 6 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SPEC")
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
 
 
       - name: Configure Buildozer
@@ -114,16 +103,27 @@ jobs:
           sed -i 's/^android.api = .*/android.api = 31/' buildozer.spec || true
           sed -i 's/^android.minapi = .*/android.minapi = 23/' buildozer.spec || true
 
+          echo "android.sdk_path = $ANDROID_HOME" >> buildozer.spec
+          echo "android.accept_sdk_license = True" >> buildozer.spec
+
 
       - name: Build APK
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: |
           cd "$PROJECT_DIR"
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
           buildozer android debug
 
 
-      - name: Show APK files
+      - name: Find APK
         if: always()
         run: |
+          echo "Generated APK files:"
           find project -type f -name "*.apk" || true
 
 
