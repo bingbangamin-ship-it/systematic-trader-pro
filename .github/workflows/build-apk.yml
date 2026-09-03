@@ -30,6 +30,7 @@ jobs:
             python3-setuptools \
             python3-wheel \
             git \
+            wget \
             zip \
             unzip \
             build-essential \
@@ -75,10 +76,46 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
+      - name: Prepare Android SDK
+        run: |
+          SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
 
-      - name: Prepare Buildozer configuration
+          mkdir -p "$SDK_DIR"
+
+          cd /tmp
+
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+
+          rm -rf temp-sdk
+          mkdir temp-sdk
+
+          unzip -q commandlinetools-linux-11076708_latest.zip -d temp-sdk
+
+          mkdir -p "$SDK_DIR/cmdline-tools/latest"
+
+          mv temp-sdk/cmdline-tools/* "$SDK_DIR/cmdline-tools/latest/"
+
+          mkdir -p "$SDK_DIR/tools/bin"
+
+          ln -sf \
+            "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" \
+            "$SDK_DIR/tools/bin/sdkmanager"
+
+          chmod +x "$SDK_DIR/tools/bin/sdkmanager"
+
+          export ANDROID_HOME="$SDK_DIR"
+
+          yes | "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" \
+            --sdk_root="$SDK_DIR" \
+            --licenses
+
+          "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" \
+            --sdk_root="$SDK_DIR" \
+            "platform-tools" \
+            "platforms;android-31" \
+            "build-tools;37.0.0"
+
+      - name: Configure project
         run: |
           cd "$PROJECT_DIR"
 
@@ -86,48 +123,10 @@ jobs:
           sed -i '/^android.minapi/d' buildozer.spec
           sed -i '/^android.ndk/d' buildozer.spec
 
+          echo "" >> buildozer.spec
           echo "android.api = 31" >> buildozer.spec
           echo "android.minapi = 23" >> buildozer.spec
           echo "android.ndk = 28c" >> buildozer.spec
-
-          cat buildozer.spec
-
-      - name: Install Buildozer Android SDK
-        run: |
-          mkdir -p $HOME/.buildozer/android/platform
-
-          cd $HOME/.buildozer/android/platform
-
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-
-          mkdir -p android-sdk
-
-          unzip -q commandlinetools-linux-11076708_latest.zip -d temp-sdk
-
-          mkdir -p android-sdk/cmdline-tools/latest
-
-          mv temp-sdk/cmdline-tools/* android-sdk/cmdline-tools/latest/
-
-          rm -rf temp-sdk
-          rm commandlinetools-linux-11076708_latest.zip
-
-          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
-
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME --licenses
-
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            --sdk_root=$ANDROID_HOME \
-            "platform-tools" \
-            "platforms;android-31" \
-            "build-tools;37.0.0"
-
-      - name: Accept licenses again
-        run: |
-          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
-
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            --sdk_root=$ANDROID_HOME \
-            --licenses
 
       - name: Build APK
         run: |
@@ -141,7 +140,7 @@ jobs:
       - name: Show APK files
         if: always()
         run: |
-          echo "APK files found:"
+          echo "Searching for APK files..."
           find project -type f -name "*.apk" || true
 
       - name: Upload APK
